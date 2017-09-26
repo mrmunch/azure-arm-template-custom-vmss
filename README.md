@@ -7,7 +7,7 @@ An Azure ARM Template with:
 - loadbalancing
 
 # Usage:
-- open the **parameters.json** file and edit *scaleset_name*, *ssh-key*, *ssh_firewall_ip* and *alert_emails*
+- open the **parameters.json** file and edit *scaleset_name*, *base_image_id*, *ssh_key*, *ssh_user_name*, *ssh_firewall_ip*, *healthcheck_path* and *alert_emails*
 - then:
 ```
 PS> .\deploy.ps1 -subscriptionId <SUBSCRIPTION-ID> -resourceGroupName <RG-NAME> -resourceGroupLocation <LOCATION> <DEPLOYMENT-NAME> [-debug]
