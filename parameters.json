@@ -1,0 +1,29 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "scaleset_name": {
+            "value": "SCALESET_NAME"
+        },
+        "base_image_id": {
+            "value": "/subscriptions/SUBSCRIPTION/resourceGroups/RESOURCE-GROUP/providers/Microsoft.Compute/images/IMAGE-NAME"
+        },
+        "ssh_key": {
+            "value": "ssh-rsa XXXXXX"
+        },
+        "ssh_user_name": {
+            "value": "USER"
+        },
+        "ssh_firewall_ip": {
+            "value": "1.2.3.4"
+        },
+        "healthcheck_path": {
+            "value": "/|/PATH/TO/HEALTCHECK/API"
+        },
+        "alert_emails": {
+            "value": [
+                "me@company.com"
+            ]
+        }
+    }
+}

@@ -1,0 +1,748 @@
+{
+    "$schema":"https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion":"1.0.0.0",
+    "parameters":{
+        "scaleset_name":{
+            "defaultValue":"myvmss",
+            "type":"String"
+        },
+        "base_image_id":{
+            "defaultValue":"/subscriptions/abcd-efgh-ijkl-mnop/resourceGroups/myrg/providers/Microsoft.Compute/images/my-base-image",
+            "type":"String"
+        },
+        "ssh_key":{
+            "defaultValue":"ssh-rsa XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+            "type":"String"
+        },
+        "ssh_user_name":{
+            "defaultValue":"user",
+            "type":"String"
+        },
+        "ssh_firewall_ip":{
+            "defaultValue":"1.2.3.4",
+            "type":"String"
+        },
+        "healthcheck_path":{
+            "defaultValue":"/PATH/TO/HEALTHCHECK/API",
+            "type":"String"
+        },
+        "alert_emails":{
+            "defaultValue":[
+                "me@company.com"
+            ],
+            "type":"Array"
+        }
+    },
+    "variables":{
+        "autoscalesettings_name":"cpuautoscale",
+        "loadBalancers_name":"[concat(parameters('scaleset_name'), '-lb')]",
+        "networkInterface_name":"[concat(parameters('scaleset_name'), '-nic')]",
+        "publicIPAddresses_name":"[concat(parameters('scaleset_name'), '-pip')]",
+        "virtualNetworks_name":"[concat(parameters('scaleset_name'), '-Vnet')]",
+        "loadBalancers_frontend_id":"[concat('/subscriptions/', subscription().subscriptionId, '/resourceGroups/', resourceGroup().Name, '/providers/Microsoft.Network/loadBalancers/', variables('loadBalancers_name'), '/frontendIPConfigurations/LoadBalancerFrontEnd')]",
+        "loadBalancers_pools_id":"[concat('/subscriptions/', subscription().subscriptionId, '/resourceGroups/', resourceGroup().Name, '/providers/Microsoft.Network/loadBalancers/', variables('loadBalancers_name'), '/backendAddressPools/bepool')]",
+        "loadBalancers_probes_name":"HTTP-Health-Probe",
+        "loadBalancers_probes_id":"[concat('/subscriptions/', subscription().subscriptionId, '/resourceGroups/', resourceGroup().Name, '/providers/Microsoft.Network/loadBalancers/', variables('loadBalancers_name'), '/probes/', variables('loadBalancers_probes_name'))]",
+        "nsg_name":"[concat(parameters('scaleset_name'), '-nsg')]",
+        "storageAccountDiagnosticsName":"[concat(parameters('scaleset_name'), 'diagstor')]",
+        "storageAccountDiagnosticsID": "[concat('/subscriptions/', subscription().subscriptionId, '/resourceGroups/', resourceGroup().Name, '/providers/','Microsoft.Storage/storageAccounts/', variables('storageAccountDiagnosticsName'))]",
+        "wadlogs": "<WadCfg><DiagnosticMonitorConfiguration overallQuotaInMB=\"4096\"><DiagnosticInfrastructureLogs scheduledTransferPeriod=\"PT1M\" scheduledTransferLogLevelFilter=\"Warning\"/>",
+        "wadperfcounters1": "<PerformanceCounters scheduledTransferPeriod=\"PT1M\"><PerformanceCounterConfiguration counterSpecifier=\"\\Memory\\AvailableMemory\" sampleRate=\"PT15S\" unit=\"Bytes\"><annotation displayName=\"Memory available\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\Memory\\PercentAvailableMemory\" sampleRate=\"PT15S\" unit=\"Percent\"><annotation displayName=\"Mem. percent available\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\Memory\\UsedMemory\" sampleRate=\"PT15S\" unit=\"Bytes\"><annotation displayName=\"Memory used\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\Memory\\PercentUsedMemory\" sampleRate=\"PT15S\" unit=\"Percent\"><annotation displayName=\"Memory percentage\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\Memory\\PercentUsedByCache\" sampleRate=\"PT15S\" unit=\"Percent\"><annotation displayName=\"Mem. used by cache\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\Memory\\PagesPerSec\" sampleRate=\"PT15S\" unit=\"CountPerSecond\"><annotation displayName=\"Pages\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\Memory\\PagesReadPerSec\" sampleRate=\"PT15S\" unit=\"CountPerSecond\"><annotation displayName=\"Page reads\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\Memory\\PagesWrittenPerSec\" sampleRate=\"PT15S\" unit=\"CountPerSecond\"><annotation displayName=\"Page writes\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\Memory\\AvailableSwap\" sampleRate=\"PT15S\" unit=\"Bytes\"><annotation displayName=\"Swap available\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\Memory\\PercentAvailableSwap\" sampleRate=\"PT15S\" unit=\"Percent\"><annotation displayName=\"Swap percent available\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\Memory\\UsedSwap\" sampleRate=\"PT15S\" unit=\"Bytes\"><annotation displayName=\"Swap used\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\Memory\\PercentUsedSwap\" sampleRate=\"PT15S\" unit=\"Percent\"><annotation displayName=\"Swap percent used\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\Processor\\PercentIdleTime\" sampleRate=\"PT15S\" unit=\"Percent\"><annotation displayName=\"CPU idle time\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\Processor\\PercentUserTime\" sampleRate=\"PT15S\" unit=\"Percent\"><annotation displayName=\"CPU user time\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\Processor\\PercentNiceTime\" sampleRate=\"PT15S\" unit=\"Percent\"><annotation displayName=\"CPU nice time\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\Processor\\PercentPrivilegedTime\" sampleRate=\"PT15S\" unit=\"Percent\"><annotation displayName=\"CPU privileged time\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\Processor\\PercentInterruptTime\" sampleRate=\"PT15S\" unit=\"Percent\"><annotation displayName=\"CPU interrupt time\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\Processor\\PercentDPCTime\" sampleRate=\"PT15S\" unit=\"Percent\"><annotation displayName=\"CPU DPC time\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\Processor\\PercentProcessorTime\" sampleRate=\"PT15S\" unit=\"Percent\"><annotation displayName=\"CPU percentage guest OS\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\Processor\\PercentIOWaitTime\" sampleRate=\"PT15S\" unit=\"Percent\"><annotation displayName=\"CPU IO wait time\" locale=\"en-us\"/></PerformanceCounterConfiguration>",
+        "wadperfcounters2": "<PerformanceCounterConfiguration counterSpecifier=\"\\PhysicalDisk\\BytesPerSecond\" sampleRate=\"PT15S\" unit=\"BytesPerSecond\"><annotation displayName=\"Disk total bytes\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\PhysicalDisk\\ReadBytesPerSecond\" sampleRate=\"PT15S\" unit=\"BytesPerSecond\"><annotation displayName=\"Disk read guest OS\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\PhysicalDisk\\WriteBytesPerSecond\" sampleRate=\"PT15S\" unit=\"BytesPerSecond\"><annotation displayName=\"Disk write guest OS\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\PhysicalDisk\\TransfersPerSecond\" sampleRate=\"PT15S\" unit=\"CountPerSecond\"><annotation displayName=\"Disk transfers\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\PhysicalDisk\\ReadsPerSecond\" sampleRate=\"PT15S\" unit=\"CountPerSecond\"><annotation displayName=\"Disk reads\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\PhysicalDisk\\WritesPerSecond\" sampleRate=\"PT15S\" unit=\"CountPerSecond\"><annotation displayName=\"Disk writes\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\PhysicalDisk\\AverageReadTime\" sampleRate=\"PT15S\" unit=\"Seconds\"><annotation displayName=\"Disk read time\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\PhysicalDisk\\AverageWriteTime\" sampleRate=\"PT15S\" unit=\"Seconds\"><annotation displayName=\"Disk write time\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\PhysicalDisk\\AverageTransferTime\" sampleRate=\"PT15S\" unit=\"Seconds\"><annotation displayName=\"Disk transfer time\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\PhysicalDisk\\AverageDiskQueueLength\" sampleRate=\"PT15S\" unit=\"Count\"><annotation displayName=\"Disk queue length\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\NetworkInterface\\BytesTransmitted\" sampleRate=\"PT15S\" unit=\"Bytes\"><annotation displayName=\"Network out guest OS\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\NetworkInterface\\BytesReceived\" sampleRate=\"PT15S\" unit=\"Bytes\"><annotation displayName=\"Network in guest OS\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\NetworkInterface\\PacketsTransmitted\" sampleRate=\"PT15S\" unit=\"Count\"><annotation displayName=\"Packets sent\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\NetworkInterface\\PacketsReceived\" sampleRate=\"PT15S\" unit=\"Count\"><annotation displayName=\"Packets received\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\NetworkInterface\\BytesTotal\" sampleRate=\"PT15S\" unit=\"Bytes\"><annotation displayName=\"Network total bytes\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\NetworkInterface\\TotalRxErrors\" sampleRate=\"PT15S\" unit=\"Count\"><annotation displayName=\"Packets received errors\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\NetworkInterface\\TotalTxErrors\" sampleRate=\"PT15S\" unit=\"Count\"><annotation displayName=\"Packets sent errors\" locale=\"en-us\"/></PerformanceCounterConfiguration><PerformanceCounterConfiguration counterSpecifier=\"\\NetworkInterface\\TotalCollisions\" sampleRate=\"PT15S\" unit=\"Count\"><annotation displayName=\"Network collisions\" locale=\"en-us\"/></PerformanceCounterConfiguration></PerformanceCounters>",
+        "wadcfgxstart": "[concat(variables('wadlogs'), variables('wadperfcounters1'), variables('wadperfcounters2'), '<Metrics resourceId=\"')]",
+        "wadmetricsresourceid": "[resourceId('Microsoft.Compute/virtualMachineScaleSets', parameters('scaleset_name'))]",
+        "wadcfgxend": "\"><MetricAggregation scheduledTransferPeriod=\"PT1H\"/><MetricAggregation scheduledTransferPeriod=\"PT1M\"/></Metrics></DiagnosticMonitorConfiguration></WadCfg>",
+        "alertrules_health_check_name": "[concat(parameters('scaleset_name'), '-healthcheck-alertrule')]",
+        "application_insights_name": "[concat(parameters('scaleset_name'), '-insights')]",
+        "webtest_name": "[concat(parameters('scaleset_name'), '-healthcheck')]",
+        "webtest_healthcheck_name": "[concat(parameters('scaleset_name'), ' health check')]"
+    },
+    "resources":[
+        {
+            "type":"Microsoft.Compute/virtualMachineScaleSets",
+            "sku":{
+                "name":"Standard_A1_v2",
+                "tier":"Standard",
+                "capacity":2
+            },
+            "name":"[parameters('scaleset_name')]",
+            "apiVersion":"2016-04-30-preview",
+            "location":"[resourceGroup().location]",
+            "scale":null,
+            "properties":{
+                "singlePlacementGroup":true,
+                "upgradePolicy":{
+                    "mode":"Manual"
+                },
+                "virtualMachineProfile":{
+                    "osProfile":{
+                        "computerNamePrefix":"[parameters('scaleset_name')]",
+                        "adminUsername":"[parameters('ssh_user_name')]",
+                        "linuxConfiguration":{
+                            "disablePasswordAuthentication":true,
+                            "ssh":{
+                                "publicKeys":[
+                                    {
+                                        "path":"[concat('/home/', parameters('ssh_user_name'), '/.ssh/authorized_keys')]",
+                                        "keyData":"[parameters('ssh_key')]"
+                                    }
+                                ]
+                            }
+                        },
+                        "secrets":[
+
+                        ]
+                    },
+                    "storageProfile":{
+                        "osDisk":{
+                            "createOption":"FromImage",
+                            "caching":"ReadWrite",
+                            "osType":"Linux",
+                            "managedDisk":{
+                                "storageAccountType":"Standard_LRS"
+                            }
+                        },
+                        "imageReference":{
+                            "id":"[parameters('base_image_id')]"
+                        }
+                    },
+                    "networkProfile":{
+                        "networkInterfaceConfigurations":[
+                            {
+                                "name":"[variables('networkInterface_name')]",
+                                "properties":{
+                                    "primary":true,
+                                    "ipConfigurations":[
+                                        {
+                                            "name":"[concat(parameters('scaleset_name'),'IpConfig')]",
+                                            "properties":{
+                                                "subnet":{
+                                                    "id":"[concat('/subscriptions/', subscription().subscriptionId,'/resourceGroups/', resourceGroup().name, '/providers/Microsoft.Network/virtualNetworks/', variables('virtualNetworks_name'), '/subnets/default')]"
+                                                },
+                                                "loadBalancerBackendAddressPools":[
+                                                    {
+                                                        "id":"[concat('/subscriptions/', subscription().subscriptionId,'/resourceGroups/', resourceGroup().name, '/providers/Microsoft.Network/loadBalancers/', variables('loadBalancers_name'), '/backendAddressPools/bepool')]"
+                                                    }
+                                                ],
+                                                "loadBalancerInboundNatPools":[
+                                                    {
+                                                        "id":"[concat('/subscriptions/', subscription().subscriptionId,'/resourceGroups/', resourceGroup().name, '/providers/Microsoft.Network/loadBalancers/', variables('loadBalancers_name'), '/inboundNatPools/natpool')]"
+                                                    }
+                                                ]
+                                            }
+                                        }
+                                    ],
+                                    "networkSecurityGroup":{
+                                        "id":"[concat('/subscriptions/', subscription().subscriptionId,'/resourceGroups/', resourceGroup().name, '/providers/Microsoft.Network/networkSecurityGroups/', variables('nsg_name'))]"
+                                    }
+                                }
+                            }
+                        ]
+                    },
+                    "extensionProfile":{
+                        "extensions":[
+                            {
+                                "name":"LinuxDiagnostic",
+                                "properties":{
+                                    "publisher": "Microsoft.OSTCExtensions",
+                                    "type": "LinuxDiagnostic",
+                                    "typeHandlerVersion": "2.3",
+                                    "autoUpgradeMinorVersion": true,
+                                    "settings": {
+                                        "xmlCfg": "[base64(concat(variables('wadcfgxstart'), variables('wadmetricsresourceid'), variables('wadcfgxend')))]",
+                                        "storageAccount": "[variables('storageAccountDiagnosticsName')]"
+                                    },
+                                    "protectedSettings":{
+                                        "storageAccountName":"[variables('storageAccountDiagnosticsName')]",
+                                        "storageAccountKey":"[listkeys(variables('storageAccountDiagnosticsID'), '2015-05-01-preview').key1]",
+                                        "storageAccountEndPoint": "https://core.windows.net"
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                },
+                "overprovision":true
+            },
+            "dependsOn":[
+                "[resourceId('Microsoft.Network/loadBalancers', variables('loadBalancers_name'))]",
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountDiagnosticsName'))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsg_name'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts",
+            "sku": {
+                "name": "Standard_LRS",
+                "tier": "Standard"
+            },
+            "kind": "Storage",
+            "name": "[variables('storageAccountDiagnosticsName')]",
+            "apiVersion": "2016-01-01",
+            "location": "[resourceGroup().location]",
+            "tags": {},
+            "properties": {},
+            "resources": [],
+            "dependsOn": []
+        },
+        {
+            "type":"Microsoft.Network/networkSecurityGroups",
+            "name":"[variables('nsg_name')]",
+            "apiVersion":"2017-06-01",
+            "location":"[resourceGroup().location]",
+            "scale":null,
+            "properties":{
+                "resourceGuid":"e5d11373-d024-44ef-b7fe-d421dff2a37d",
+                "securityRules":[
+                    {
+                        "name":"HTTP-Allow-All",
+                        "properties":{
+                            "protocol":"TCP",
+                            "sourcePortRange":"*",
+                            "destinationPortRange":"80",
+                            "sourceAddressPrefix":"*",
+                            "destinationAddressPrefix":"*",
+                            "access":"Allow",
+                            "priority":100,
+                            "direction":"Inbound",
+                            "sourceAddressPrefixes":[
+
+                            ],
+                            "destinationAddressPrefixes":[
+
+                            ]
+                        }
+                    },
+                    {
+                        "name":"HTTPS-Allow-All",
+                        "properties":{
+                            "protocol":"TCP",
+                            "sourcePortRange":"*",
+                            "destinationPortRange":"443",
+                            "sourceAddressPrefix":"*",
+                            "destinationAddressPrefix":"*",
+                            "access":"Allow",
+                            "priority":110,
+                            "direction":"Inbound",
+                            "sourceAddressPrefixes":[
+
+                            ],
+                            "destinationAddressPrefixes":[
+
+                            ]
+                        }
+                    },
+                    {
+                        "name":"SSH-Allow-Me",
+                        "properties":{
+                            "protocol":"TCP",
+                            "sourcePortRange":"*",
+                            "destinationPortRange":"2121",
+                            "sourceAddressPrefix":"[parameters('ssh_firewall_ip')]",
+                            "destinationAddressPrefix":"*",
+                            "access":"Allow",
+                            "priority":1000,
+                            "direction":"Inbound",
+                            "sourceAddressPrefixes":[
+
+                            ],
+                            "destinationAddressPrefixes":[
+
+                            ]
+                        }
+                    },
+                ],
+                "defaultSecurityRules":[
+                    {
+                        "name":"AllowVnetInBound",
+                        "properties":{
+                            "description":"Allow inbound traffic from all VMs in VNET",
+                            "protocol":"*",
+                            "sourcePortRange":"*",
+                            "destinationPortRange":"*",
+                            "sourceAddressPrefix":"VirtualNetwork",
+                            "destinationAddressPrefix":"VirtualNetwork",
+                            "access":"Allow",
+                            "priority":65000,
+                            "direction":"Inbound",
+                            "sourceAddressPrefixes":[
+
+                            ],
+                            "destinationAddressPrefixes":[
+
+                            ]
+                        }
+                    },
+                    {
+                        "name":"AllowAzureLoadBalancerInBound",
+                        "properties":{
+                            "description":"Allow inbound traffic from azure load balancer",
+                            "protocol":"*",
+                            "sourcePortRange":"*",
+                            "destinationPortRange":"*",
+                            "sourceAddressPrefix":"AzureLoadBalancer",
+                            "destinationAddressPrefix":"*",
+                            "access":"Allow",
+                            "priority":65001,
+                            "direction":"Inbound",
+                            "sourceAddressPrefixes":[
+
+                            ],
+                            "destinationAddressPrefixes":[
+
+                            ]
+                        }
+                    },
+                    {
+                        "name":"DenyAllInBound",
+                        "properties":{
+                            "description":"Deny all inbound traffic",
+                            "protocol":"*",
+                            "sourcePortRange":"*",
+                            "destinationPortRange":"*",
+                            "sourceAddressPrefix":"*",
+                            "destinationAddressPrefix":"*",
+                            "access":"Deny",
+                            "priority":65500,
+                            "direction":"Inbound",
+                            "sourceAddressPrefixes":[
+
+                            ],
+                            "destinationAddressPrefixes":[
+
+                            ]
+                        }
+                    },
+                    {
+                        "name":"AllowVnetOutBound",
+                        "properties":{
+                            "description":"Allow outbound traffic from all VMs to all VMs in VNET",
+                            "protocol":"*",
+                            "sourcePortRange":"*",
+                            "destinationPortRange":"*",
+                            "sourceAddressPrefix":"VirtualNetwork",
+                            "destinationAddressPrefix":"VirtualNetwork",
+                            "access":"Allow",
+                            "priority":65000,
+                            "direction":"Outbound",
+                            "sourceAddressPrefixes":[
+
+                            ],
+                            "destinationAddressPrefixes":[
+
+                            ]
+                        }
+                    },
+                    {
+                        "name":"AllowInternetOutBound",
+                        "properties":{
+                            "description":"Allow outbound traffic from all VMs to Internet",
+                            "protocol":"*",
+                            "sourcePortRange":"*",
+                            "destinationPortRange":"*",
+                            "sourceAddressPrefix":"*",
+                            "destinationAddressPrefix":"Internet",
+                            "access":"Allow",
+                            "priority":65001,
+                            "direction":"Outbound",
+                            "sourceAddressPrefixes":[
+
+                            ],
+                            "destinationAddressPrefixes":[
+
+                            ]
+                        }
+                    },
+                    {
+                        "name":"DenyAllOutBound",
+                        "properties":{
+                            "description":"Deny all outbound traffic",
+                            "protocol":"*",
+                            "sourcePortRange":"*",
+                            "destinationPortRange":"*",
+                            "sourceAddressPrefix":"*",
+                            "destinationAddressPrefix":"*",
+                            "access":"Deny",
+                            "priority":65500,
+                            "direction":"Outbound",
+                            "sourceAddressPrefixes":[
+
+                            ],
+                            "destinationAddressPrefixes":[
+
+                            ]
+                        }
+                    }
+                ]
+            },
+            "dependsOn":[
+
+            ]
+        },
+        {
+            "type":"microsoft.insights/autoscalesettings",
+            "name":"[variables('autoscalesettings_name')]",
+            "apiVersion":"2014-04-01",
+            "location":"westus",
+            "tags":{
+
+            },
+            "scale":null,
+            "properties":{
+                "profiles":[
+                    {
+                        "name":"Profile1",
+                        "capacity":{
+                            "minimum":"2",
+                            "maximum":"4",
+                            "default":"2"
+                        },
+                        "rules":[
+                            {
+                                "metricTrigger":{
+                                    "metricName":"Percentage CPU",
+                                    "metricNamespace":"",
+                                    "metricResourceUri":"[resourceId('Microsoft.Compute/virtualMachineScaleSets', parameters('scaleset_name'))]",
+                                    "timeGrain":"PT1M",
+                                    "statistic":"Average",
+                                    "timeWindow":"PT5M",
+                                    "timeAggregation":"Average",
+                                    "operator":"GreaterThan",
+                                    "threshold":60
+                                },
+                                "scaleAction":{
+                                    "direction":"Increase",
+                                    "type":"ChangeCount",
+                                    "value":"1",
+                                    "cooldown":"PT1M"
+                                }
+                            },
+                            {
+                                "metricTrigger": {
+                                    "metricName": "\\Memory\\PercentUsedMemory",
+                                    "metricNamespace": "",
+                                    "metricResourceUri": "[resourceId('Microsoft.Compute/virtualMachineScaleSets', parameters('scaleset_name'))]",
+                                    "timeGrain": "PT1M",
+                                    "statistic": "Average",
+                                    "timeWindow": "PT5M",
+                                    "timeAggregation": "Average",
+                                    "operator": "GreaterThan",
+                                    "threshold": 70
+                                },
+                                "scaleAction": {
+                                    "direction": "Increase",
+                                    "type": "ChangeCount",
+                                    "value": "1",
+                                    "cooldown": "PT10M"
+                                }
+                            },
+                            {
+                                "metricTrigger":{
+                                    "metricName":"Percentage CPU",
+                                    "metricNamespace":"",
+                                    "metricResourceUri":"[resourceId('Microsoft.Compute/virtualMachineScaleSets', parameters('scaleset_name'))]",
+                                    "timeGrain":"PT1M",
+                                    "statistic":"Average",
+                                    "timeWindow":"PT5M",
+                                    "timeAggregation":"Average",
+                                    "operator":"LessThan",
+                                    "threshold":30
+                                },
+                                "scaleAction":{
+                                    "direction":"Decrease",
+                                    "type":"ChangeCount",
+                                    "value":"1",
+                                    "cooldown":"PT1M"
+                                }
+                            },
+                            {
+                                "metricTrigger": {
+                                    "metricName": "\\Memory\\PercentUsedMemory",
+                                    "metricNamespace": "",
+                                    "metricResourceUri": "[resourceId('Microsoft.Compute/virtualMachineScaleSets', parameters('scaleset_name'))]",
+                                    "timeGrain": "PT1M",
+                                    "statistic": "Average",
+                                    "timeWindow": "PT5M",
+                                    "timeAggregation": "Average",
+                                    "operator": "LessThan",
+                                    "threshold": 50
+                                },
+                                "scaleAction": {
+                                    "direction": "Decrease",
+                                    "type": "ChangeCount",
+                                    "value": "1",
+                                    "cooldown": "PT5M"
+                                }
+                            }
+                        ]
+                    }
+                ],
+                "enabled":true,
+                "name":"[variables('autoscalesettings_name')]",
+                "targetResourceUri":"[resourceId('Microsoft.Compute/virtualMachineScaleSets', parameters('scaleset_name'))]"
+            },
+            "dependsOn":[
+                "[resourceId('Microsoft.Compute/virtualMachineScaleSets', parameters('scaleset_name'))]"
+            ]
+        },
+        {
+            "type":"Microsoft.Network/loadBalancers",
+            "name":"[variables('loadBalancers_name')]",
+            "apiVersion":"2017-06-01",
+            "location":"[resourceGroup().location]",
+            "scale":null,
+            "properties":{
+                "resourceGuid":"d0548f5d-109e-424e-8417-7acfbf23562c",
+                "frontendIPConfigurations":[
+                    {
+                        "name":"LoadBalancerFrontEnd",
+                        "properties":{
+                            "privateIPAllocationMethod":"Dynamic",
+                            "publicIPAddress":{
+                                "id":"[resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddresses_name'))]"
+                            }
+                        }
+                    }
+                ],
+                "backendAddressPools":[
+                    {
+                        "name":"bepool"
+                    }
+                ],
+                "loadBalancingRules":[
+                    {
+                        "name":"HTTP",
+                        "properties":{
+                            "frontendIPConfiguration":{
+                                "id":"[variables('loadBalancers_frontend_id')]"
+                            },
+                            "frontendPort":80,
+                            "backendPort":80,
+                            "enableFloatingIP":false,
+                            "idleTimeoutInMinutes":4,
+                            "protocol":"Tcp",
+                            "loadDistribution":"Default",
+                            "backendAddressPool":{
+                                "id":"[variables('loadBalancers_pools_id')]"
+                            },
+                            "probe":{
+                                "id":"[variables('loadBalancers_probes_id')]"
+                            }
+                        }
+                    },
+                    {
+                        "name":"HTTPS",
+                        "properties":{
+                            "frontendIPConfiguration":{
+                                "id":"[variables('loadBalancers_frontend_id')]"
+                            },
+                            "frontendPort":443,
+                            "backendPort":443,
+                            "enableFloatingIP":false,
+                            "idleTimeoutInMinutes":4,
+                            "protocol":"Tcp",
+                            "loadDistribution":"Default",
+                            "backendAddressPool":{
+                                "id":"[variables('loadBalancers_pools_id')]"
+                            },
+                            "probe":{
+                                "id":"[variables('loadBalancers_probes_id')]"
+                            }
+                        }
+                    }
+                ],
+                "probes":[
+                    {
+                        "name":"[variables('loadBalancers_probes_name')]",
+                        "properties":{
+                            "protocol":"Http",
+                            "port":80,
+                            "requestPath":"[parameters('healthcheck_path')]",
+                            "intervalInSeconds":5,
+                            "numberOfProbes":2
+                        }
+                    }
+                ],
+                "inboundNatRules":[
+
+                ],
+                "outboundNatRules":[
+
+                ],
+                "inboundNatPools":[
+                    {
+                        "name":"natpool",
+                        "properties":{
+                            "frontendPortRangeStart":50000,
+                            "frontendPortRangeEnd":50099,
+                            "backendPort":2121,
+                            "protocol":"Tcp",
+                            "frontendIPConfiguration":{
+                                "id":"[variables('loadBalancers_frontend_id')]"
+                            }
+                        }
+                    },
+                    {
+                        "name":"espool",
+                        "properties":{
+                            "frontendPortRangeStart":9200,
+                            "frontendPortRangeEnd":9299,
+                            "backendPort":9200,
+                            "protocol":"Tcp",
+                            "frontendIPConfiguration":{
+                                "id":"[variables('loadBalancers_frontend_id')]"
+                            }
+                        }
+                    }
+                ]
+            },
+            "dependsOn":[
+                "[resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddresses_name'))]"
+            ]
+        },
+        {
+            "type":"Microsoft.Network/publicIPAddresses",
+            "name":"[variables('publicIPAddresses_name')]",
+            "apiVersion":"2017-06-01",
+            "location":"[resourceGroup().location]",
+            "scale":null,
+            "properties":{
+                "publicIPAddressVersion":"IPv4",
+                "publicIPAllocationMethod":"Static",
+                "idleTimeoutInMinutes":4,
+                "dnsSettings":{
+                    "domainNameLabel":"[parameters('scaleset_name')]",
+                    "fqdn":"[concat(parameters('scaleset_name'), '.westeurope.cloudapp.azure.com')]"
+                }
+            },
+            "dependsOn":[
+
+            ]
+        },
+        {
+            "type":"Microsoft.Network/virtualNetworks",
+            "name":"[variables('virtualNetworks_name')]",
+            "apiVersion":"2017-06-01",
+            "location":"[resourceGroup().location]",
+            "scale":null,
+            "properties":{
+                "resourceGuid":"219f40b6-01d6-4311-9e92-688e828b2d38",
+                "addressSpace":{
+                    "addressPrefixes":[
+                        "10.0.0.0/16"
+                    ]
+                },
+                "subnets":[
+                    {
+                        "name":"default",
+                        "properties":{
+                            "addressPrefix":"10.0.0.0/24"
+                        }
+                    }
+                ],
+                "virtualNetworkPeerings":[
+
+                ]
+            },
+            "dependsOn":[
+
+            ]
+        },
+        {
+            "type": "microsoft.insights/alertrules",
+            "name": "[variables('alertrules_health_check_name')]",
+            "apiVersion": "2014-04-01",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "[concat('hidden-link:/subscriptions/', subscription().subscriptionId, '/resourcegroups/', resourceGroup().Name, '/providers/microsoft.insights/components/', variables('application_insights_name'))]": "Resource",
+                "[concat('hidden-link:/subscriptions/', subscription().subscriptionId, '/resourcegroups/', resourceGroup().Name, '/providers/microsoft.insights/webtests/', variables('alertrules_health_check_name'))]": "Resource"
+            },
+            "scale": null,
+            "properties": {
+                "name": "[variables('alertrules_health_check_name')]",
+                "description": "",
+                "isEnabled": true,
+                "condition": {
+                    "odata.type": "Microsoft.Azure.Management.Insights.Models.LocationThresholdRuleCondition",
+                    "dataSource": {
+                        "odata.type": "Microsoft.Azure.Management.Insights.Models.RuleMetricDataSource",
+                        "resourceUri": "[resourceId('microsoft.insights/webtests', variables('webtest_name'))]",
+                        "metricName": "GSMT_AvRaW"
+                    },
+                    "windowSize": "PT5M",
+                    "failedLocationCount": 3
+                },
+                "action": {
+                    "odata.type": "Microsoft.Azure.Management.Insights.Models.RuleEmailAction",
+                    "customEmails": "[parameters('alert_emails')]"
+                }
+            },
+            "dependsOn": [
+                "[resourceId('microsoft.insights/webtests', variables('webtest_name'))]"
+            ]
+        },
+        {
+            "type": "microsoft.insights/components",
+            "kind": "web",
+            "name": "[variables('application_insights_name')]",
+            "apiVersion": "2014-04-01",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "[concat('hidden-link:/subscriptions/', subscription().subscriptionId, '/resourcegroups/', resourceGroup().Name, '/providers/Microsoft.Web/sites/', variables('application_insights_name'))]": "Resource"
+            },
+            "scale": null,
+            "properties": {
+                "ApplicationId": "[variables('application_insights_name')]"
+            },
+            "dependsOn": []
+        },
+        {
+            "type": "microsoft.insights/webtests",
+            "name": "[variables('webtest_name')]",
+            "apiVersion": "2014-04-01",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "[concat('hidden-link:/subscriptions/', subscription().subscriptionId, '/resourcegroups/', resourceGroup().Name, '/providers/microsoft.insights/components/', variables('application_insights_name'))]": "Resource",
+                "[concat('hidden-link:/subscriptions/', subscription().subscriptionId, '/resourcegroups/', resourceGroup().Name, '/providers/Microsoft.Compute/virtualMachineScaleSets/', parameters('scaleset_name'))]": "Resource"
+            },
+            "scale": null,
+            "properties": {
+                "SyntheticMonitorId": "[variables('webtest_name')]",
+                "Name": "[variables('webtest_healthcheck_name')]",
+                "Kind": "ping",
+                "Description": "",
+                "Enabled": true,
+                "Frequency": 300,
+                "Timeout": 30,
+                "Locations": [
+                    {
+                        "Id": "emea-se-sto-edge"
+                    },
+                    {
+                        "Id": "emea-nl-ams-azr"
+                    },
+                    {
+                        "Id": "emea-gb-db3-azr"
+                    },
+                    {
+                        "Id": "emea-fr-pra-edge"
+                    },
+                    {
+                        "Id": "emea-ch-zrh-edge"
+                    }
+                ],
+                "Configuration": {
+                    "WebTest": "[concat('<WebTest         Name=\"', variables('webtest_healthcheck_name'), '\"         Id=\"adc252a7-e52f-4b24-880f-93492a2fee95\"         Enabled=\"True\"         CssProjectStructure=\"\"         CssIteration=\"\"         Timeout=\"30\"         WorkItemIds=\"\"         xmlns=\"http://microsoft.com/schemas/VisualStudio/TeamTest/2010\"         Description=\"\"         CredentialUserName=\"\"         CredentialPassword=\"\"         PreAuthenticate=\"True\"         Proxy=\"default\"         StopOnError=\"False\"         RecordedResultFile=\"\"         ResultsLocale=\"\">        <Items>        <Request         Method=\"GET\"         Guid=\"ac815b80-daa9-f9fc-9fe2-d4db5fda7f91\"         Version=\"1.1\"         Url=\"http://', parameters('scaleset_name'), '.westeurope.cloudapp.azure.com:81/api/checkeshealth', '\"         ThinkTime=\"0\"         Timeout=\"30\"         ParseDependentRequests=\"True\"         FollowRedirects=\"True\"         RecordResult=\"True\"         Cache=\"False\"         ResponseTimeGoal=\"0\"         Encoding=\"utf-8\"         ExpectedHttpStatusCode=\"200\"         ExpectedResponseUrl=\"\"         ReportingName=\"\"         IgnoreHttpStatusCode=\"False\" />        </Items>        </WebTest>')]"
+                },
+                "provisioningState": "Succeeded"
+            },
+            "dependsOn": ["[resourceId('microsoft.insights/components', variables('application_insights_name'))]"]
+        }
+    ],
+    "outputs": {
+        "ipaddress": {
+            "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses',variables('publicIPAddresses_name')),'2016-10-01').ipAddress]",
+            "type": "string"
+        }
+    }
+}
